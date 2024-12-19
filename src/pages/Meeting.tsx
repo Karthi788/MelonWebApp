@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import Peer from 'simple-peer';
 import { useAuth } from '../context/AuthContext';
-import { Video, Mic, MicOff, VideoOff, Phone, Share, Users, Copy, Check, AlertCircle } from 'lucide-react';
+import { Video, Mic, MicOff, VideoOff, Phone, Share, Users, Copy, Check, AlertCircle, Maximize, Minimize } from 'lucide-react';
 import ParticipantsList from '../components/meeting/ParticipantsList';
 
 interface PeerConnection {
@@ -24,14 +24,15 @@ const Meeting = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false); // State to track full-screen mode
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null); // For remote video
 
   // Generate meeting URL
   const meetingUrl = `${window.location.origin}/meeting/${roomId}`;
 
   const initializeMediaDevices = async () => {
     try {
-      // First check if devices are available
       const devices = await navigator.mediaDevices.enumerateDevices();
       const hasVideo = devices.some(device => device.kind === 'videoinput');
       const hasAudio = devices.some(device => device.kind === 'audioinput');
@@ -55,7 +56,6 @@ const Meeting = () => {
       setError(null);
     } catch (err: any) {
       let errorMessage = 'Failed to access media devices.';
-      
       if (err.name === 'NotFoundError') {
         errorMessage = 'No camera or microphone found. Please connect a device and try again.';
       } else if (err.name === 'NotAllowedError') {
@@ -63,7 +63,7 @@ const Meeting = () => {
       } else if (err.name === 'NotReadableError') {
         errorMessage = 'Your camera or microphone is already in use by another application.';
       }
-      
+
       setError(errorMessage);
       setIsVideoEnabled(false);
       setIsAudioEnabled(false);
@@ -82,9 +82,7 @@ const Meeting = () => {
 
     return () => {
       if (localStream) {
-        localStream.getTracks().forEach(track => {
-          track.stop();
-        });
+        localStream.getTracks().forEach(track => track.stop());
       }
     };
   }, [user, navigate]);
@@ -146,7 +144,6 @@ const Meeting = () => {
         localVideoRef.current.srcObject = screenStream;
       }
 
-      // Handle screen sharing stop
       screenStream.getVideoTracks()[0].onended = () => {
         if (localStream && localVideoRef.current) {
           localVideoRef.current.srcObject = localStream;
@@ -167,8 +164,13 @@ const Meeting = () => {
     navigate('/dashboard');
   };
 
+  // Toggle full-screen mode
+  const toggleFullScreen = () => {
+    setIsFullScreen(!isFullScreen);
+  };
+
   return (
-    <div className="min-h-screen pt-16 bg-gray-900">
+    <div className={`min-h-screen pt-16 bg-gray-900 ${isFullScreen ? 'h-screen' : ''}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="py-8">
           {/* Error Message */}
@@ -181,7 +183,7 @@ const Meeting = () => {
 
           <div className="flex gap-4">
             {/* Main Content */}
-            <div className="flex-1">
+            <div className={`flex-1 ${isFullScreen ? 'h-full' : ''}`}>
               {/* Room Info */}
               <div className="mb-6 flex items-center justify-between">
                 <div className="text-white">
@@ -190,10 +192,15 @@ const Meeting = () => {
                     {peers.length + 1} participant{peers.length !== 0 ? 's' : ''}
                   </p>
                 </div>
+
+                {/* Full-Screen Button */}
+                <button onClick={toggleFullScreen} className="text-white p-2 rounded-full">
+                  {isFullScreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+                </button>
               </div>
 
               {/* Video Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-20">
+              <div className={`grid gap-4 mb-20 ${peers.length === 0 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
                 {/* Local Video */}
                 <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
                   {isVideoEnabled ? (
@@ -216,13 +223,13 @@ const Meeting = () => {
                     You {!isAudioEnabled && '(muted)'}
                   </div>
                 </div>
-
                 {/* Remote Videos */}
                 {peers.map(peer => (
                   <div key={peer.peerId} className="relative bg-black rounded-lg overflow-hidden aspect-video">
                     <video
                       autoPlay
                       playsInline
+                      ref={remoteVideoRef}
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute bottom-4 left-4 text-white text-sm font-medium bg-black/50 px-2 py-1 rounded">
@@ -244,9 +251,7 @@ const Meeting = () => {
             <div className="max-w-7xl mx-auto flex items-center justify-center space-x-4">
               <button
                 onClick={toggleAudio}
-                className={`p-4 rounded-full transition-colors ${
-                  isAudioEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
-                }`}
+                className={`p-4 rounded-full transition-colors ${isAudioEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'}`}
                 title={isAudioEnabled ? 'Mute' : 'Unmute'}
               >
                 {isAudioEnabled ? (
@@ -255,13 +260,10 @@ const Meeting = () => {
                   <MicOff className="w-6 h-6 text-white" />
                 )}
               </button>
-
               <button
                 onClick={toggleVideo}
-                className={`p-4 rounded-full transition-colors ${
-                  isVideoEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
-                }`}
-                title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
+                className={`p-4 rounded-full transition-colors ${isVideoEnabled ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'}`}
+                title={isVideoEnabled ? 'Stop Camera' : 'Start Camera'}
               >
                 {isVideoEnabled ? (
                   <Video className="w-6 h-6 text-white" />
@@ -269,22 +271,21 @@ const Meeting = () => {
                   <VideoOff className="w-6 h-6 text-white" />
                 )}
               </button>
-
-              <button
-                onClick={shareScreen}
-                className="p-4 rounded-full bg-gray-600 hover:bg-gray-700 transition-colors"
-                title="Share screen"
-              >
-                <Share className="w-6 h-6 text-white" />
-              </button>
-
               <button
                 onClick={endCall}
                 className="p-4 rounded-full bg-red-600 hover:bg-red-700 transition-colors"
-                title="End call"
+                title="End Call"
               >
-                <Phone className="w-6 h-6 text-white transform rotate-135" />
+                <Phone className="w-6 h-6 text-white" />
               </button>
+              <button
+                onClick={shareScreen}
+                className="p-4 rounded-full bg-gray-600 hover:bg-gray-700 transition-colors"
+                title="Share Screen"
+              >
+                <Share className="w-6 h-6 text-white" />
+              </button>
+              
             </div>
           </div>
         </div>
